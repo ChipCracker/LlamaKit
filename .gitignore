@@ -1,0 +1,19 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Vendored / generated xcframework (build via scripts/build-xcframework.sh)
+Frameworks/llama.xcframework/
+
+# llama.cpp clone + release artifacts
+third_party/
+dist/
+
+# Downloaded models
+*.gguf
+
+# macOS / Xcode
+.DS_Store
+DerivedData/
+xcuserdata/
