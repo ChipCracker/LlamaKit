@@ -34,6 +34,20 @@ while IFS= read -r -d '' d; do
   mv "$d" "$DSYM_TMP/$rel"
 done < <(find "$WORK/llama.xcframework" -type d -name dSYMs -print0)
 
+# --- Drop the now-dangling DebugSymbolsPath keys from the xcframework Info.plist ---
+# Each AvailableLibraries entry declares `DebugSymbolsPath = dSYMs`. After the
+# stripping above that path no longer exists, and Xcode validates it strictly →
+# "Missing path .../dSYMs ... DebugSymbolsPath" build failures for remote
+# consumers. Remove the key from every slice (debug symbols ship separately in
+# llama.dSYMs.zip for anyone who needs symbolication).
+PLIST="$WORK/llama.xcframework/Info.plist"
+i=0
+while /usr/libexec/PlistBuddy -c "Print :AvailableLibraries:$i:DebugSymbolsPath" "$PLIST" >/dev/null 2>&1; do
+  /usr/libexec/PlistBuddy -c "Delete :AvailableLibraries:$i:DebugSymbolsPath" "$PLIST"
+  i=$((i + 1))
+done
+echo "=== Removed DebugSymbolsPath from $i slice(s) ==="
+
 # --- Zip with ditto (preserves the macOS Versions/Current symlink) ---
 echo "=== Zipping stripped xcframework ==="
 ditto -c -k --keepParent "$WORK/llama.xcframework" "$DIST/llama.xcframework.zip"

@@ -12,8 +12,8 @@ import Foundation
 // `useLocal` is true whenever the local xcframework exists, the env var is set,
 // or no remote checksum has been published yet → the package builds out of the box.
 
-let remoteURL = "https://github.com/ChipCracker/LlamaKit/releases/download/llama-b9488-1/llama.xcframework.zip"
-let remoteChecksum = "a5f15ac43028f9d639069d7e2881d2b7c3c7c9ed789d4e19a1eb6d39b1991f6a"
+let remoteURL = "https://github.com/ChipCracker/LlamaKit/releases/download/llama-b9488-2/llama.xcframework.zip"
+let remoteChecksum = "90cc7ecc4044c0c54c009714d2c5269b5146bc64204789b3477f061fa72991a4"
 
 // Relativer Pfad fürs binaryTarget (SPM löst ihn ggü. dem Package-Root auf); die
 // Existenzprüfung nutzt einen ABSOLUTEN, vom Manifest abgeleiteten Pfad (`#filePath`),
