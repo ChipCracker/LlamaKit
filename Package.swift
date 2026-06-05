@@ -15,8 +15,15 @@ import Foundation
 let remoteURL = "https://github.com/ChipCracker/LlamaKit/releases/download/llama-b9488-1/llama.xcframework.zip"
 let remoteChecksum = "a5f15ac43028f9d639069d7e2881d2b7c3c7c9ed789d4e19a1eb6d39b1991f6a"
 
+// Relativer Pfad fürs binaryTarget (SPM löst ihn ggü. dem Package-Root auf); die
+// Existenzprüfung nutzt einen ABSOLUTEN, vom Manifest abgeleiteten Pfad (`#filePath`),
+// damit `hasLocal` cwd-unabhängig ist — sonst greift bei Konsum aus einem anderen
+// Verzeichnis (Xcode-GUI / xcodebuild aus dem Consumer-Dir) fälschlich das Remote-
+// Binary, dem die dSYMs fehlen (DebugSymbolsPath-Validierungsfehler).
 let localXCFrameworkPath = "Frameworks/llama.xcframework"
-let hasLocalXCFramework = FileManager.default.fileExists(atPath: localXCFrameworkPath)
+let packageDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().path
+let localXCFrameworkAbsPath = packageDir + "/" + localXCFrameworkPath
+let hasLocalXCFramework = FileManager.default.fileExists(atPath: localXCFrameworkAbsPath)
 let forceLocal = ProcessInfo.processInfo.environment["LLAMAKIT_LOCAL_XCFRAMEWORK"] != nil
 let useLocal = forceLocal || hasLocalXCFramework || remoteChecksum.isEmpty
 
