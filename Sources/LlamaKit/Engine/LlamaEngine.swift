@@ -161,11 +161,18 @@ public actor LlamaEngine {
             var nDecoded = tokens.count
             var cur = llama_sampler_sample(smpl, ctx, -1)
             var toolDetected = false
+            // UTF-8-Bytes, die am Token-Ende eine unvollständige Mehrbyte-Sequenz
+            // bilden (z. B. ein über mehrere Tokens verteiltes Emoji) → erst
+            // dekodieren, wenn die Sequenz mit dem nächsten Token komplett ist.
+            var pendingBytes: [UInt8] = []
 
             while stats.generatedTokens < maxTokens, shouldContinue() {
                 if llama_vocab_is_eog(vocab, cur) { break }
 
-                roundText += piece(for: cur)
+                pendingBytes += pieceBytes(for: cur)
+                let (decoded, rest) = Self.splitValidUTF8(pendingBytes)
+                pendingBytes = rest
+                roundText += decoded
                 stats.generatedTokens += 1
                 streamVisible(roundText, alreadyStreamed: &streamedChars,
                               boundary: boundary, onToken: onToken)
@@ -180,6 +187,13 @@ public actor LlamaEngine {
                 if !ok { break roundLoop }
                 nDecoded += 1
                 cur = llama_sampler_sample(smpl, ctx, -1)
+            }
+            // Restbytes einer am Rundenende unvollständigen UTF-8-Sequenz flushen.
+            if !pendingBytes.isEmpty {
+                roundText += String(decoding: pendingBytes, as: UTF8.self)
+                pendingBytes = []
+                streamVisible(roundText, alreadyStreamed: &streamedChars,
+                              boundary: boundary, onToken: onToken)
             }
 
             // No (parseable) tool call → finished answer.
@@ -270,8 +284,11 @@ public actor LlamaEngine {
         return Array(tokens.prefix(Int(n)))
     }
 
-    /// Converts a single token to its text piece (UTF-8 safe).
-    private func piece(for token: llama_token) -> String {
+    /// Raw UTF-8 bytes of a single token's text piece. Decoding is deferred across
+    /// tokens (see `splitValidUTF8`): byte-level BPE can split a multi-byte
+    /// character (e.g. an emoji) over several tokens, so decoding each token in
+    /// isolation would yield U+FFFD replacement characters.
+    private func pieceBytes(for token: llama_token) -> [UInt8] {
         var size = 64
         while true {
             var buf = [CChar](repeating: 0, count: size)
@@ -280,8 +297,29 @@ public actor LlamaEngine {
                 size = Int(-n)
                 continue
             }
-            let bytes = buf.prefix(Int(n)).map { UInt8(bitPattern: $0) }
-            return String(decoding: bytes, as: UTF8.self)
+            return buf.prefix(Int(n)).map { UInt8(bitPattern: $0) }
         }
+    }
+
+    /// Splits a byte buffer at the last COMPLETE UTF-8 sequence boundary: returns
+    /// the decodable prefix as a `String` plus the leftover trailing bytes of an
+    /// incomplete multi-byte sequence (prepended to the next token's bytes). This
+    /// is what prevents `�` when a character spans token boundaries.
+    static func splitValidUTF8(_ buf: [UInt8]) -> (text: String, rest: [UInt8]) {
+        guard !buf.isEmpty else { return ("", []) }
+        // Walk back over UTF-8 continuation bytes (0b10xxxxxx) to the last lead byte.
+        var i = buf.count - 1
+        while i > 0 && (buf[i] & 0xC0) == 0x80 { i -= 1 }
+        let lead = buf[i]
+        let seqLen: Int
+        if lead < 0x80 { seqLen = 1 }
+        else if lead & 0xE0 == 0xC0 { seqLen = 2 }
+        else if lead & 0xF0 == 0xE0 { seqLen = 3 }
+        else if lead & 0xF8 == 0xF0 { seqLen = 4 }
+        else { seqLen = 1 }   // stray continuation / invalid lead byte
+        if buf.count - i >= seqLen {
+            return (String(decoding: buf, as: UTF8.self), [])   // last sequence complete
+        }
+        return (String(decoding: buf[0..<i], as: UTF8.self), Array(buf[i...]))   // hold remainder
     }
 }
